@@ -69,7 +69,7 @@ async def resetmoney(ctx, user: str):
 
     await ctx.send(f"♻️ حساب {user} ریست شد")
     
-@ remove money
+# remove money
 @bot.command()
 async def removemoney(ctx, user: str, amount: int):
     if not ctx.author.guild_permissions.administrator:
