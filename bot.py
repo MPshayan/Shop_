@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS products (
     name TEXT,
     price INTEGER
 )
-conn.commit()
+
 """)
 c.execute("""
 CREATE TABLE IF NOT EXISTS wallet (
