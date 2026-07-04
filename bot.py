@@ -23,6 +23,7 @@ async def on_ready():
 @bot.command()
 async def kir(ctx):
     await ctx.send("تو کونت")
+    
 # 📦 لیست محصولات
 @bot.command()
 async def shop(ctx):
