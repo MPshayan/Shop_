@@ -19,7 +19,10 @@ orders = []
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
-
+    
+@bot.command()
+async def kir(ctx):
+    await ctx.send("تو کونت")
 # 📦 لیست محصولات
 @bot.command()
 async def shop(ctx):
