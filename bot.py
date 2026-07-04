@@ -236,7 +236,7 @@ async def txt(ctx, *, text):
     await ctx.send(f"{text}\n\n━━━━━━━━━━\nSend By {ctx.author.name}")
 
 # ================= HELP (FIXED) =================
-@bot.command(name="help")
+@bot.command(name="helpp")
 async def help_command(ctx):
     msg = """
 📖 YAKUZA SHOP HELP
