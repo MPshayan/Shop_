@@ -106,9 +106,15 @@ def init_products():
         c.executemany("""
         INSERT INTO products VALUES (?,?,?)
         """, [
-            ("1", "Item One", 50000),
-            ("2", "Item Two", 100000),
-            ("3", "Item Three", 25000),
+            ("1", "Sandwich", 2000),
+            ("2", "Taco", 1500),
+            ("3", "Burger", 2200),
+            ("4", "Donut", 1500),
+            ("5", "Cookie", 1500),
+            ("6", "Hotdog", 2000),
+            ("7", "Pancake", 1500),
+            ("8", "Softdrink", 2200),
+            ("9", "Water", 1500),
         ])
         conn.commit()
 
