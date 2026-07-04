@@ -41,30 +41,32 @@ CREATE TABLE IF NOT EXISTS wallet (
 
 conn.commit()
 
+# ================= CONFIG =================
 LOG_CHANNEL_ID = 1522694424180555899
 
 # ================= HELPERS =================
 def get_balance(user):
     c.execute("SELECT balance FROM wallet WHERE user=?", (user,))
     r = c.fetchone()
+
     if r:
         return r[0]
+
     c.execute("INSERT INTO wallet (user, balance) VALUES (?, ?)", (user, 0))
     conn.commit()
     return 0
 
-def log_channel():
-    cid = os.getenv("LOG_CHANNEL_ID")
-    return int(cid) if cid else None
 
 async def send_log(guild, text):
-    cid = log_channel()
-    if cid:
-        ch = guild.get_channel(cid)
+    try:
+        ch = guild.get_channel(LOG_CHANNEL_ID)
         if ch:
             await ch.send(text)
+    except:
+        pass
 
-# ================= PRODUCTS INIT =================
+
+# ================= INIT PRODUCTS =================
 def init_products():
     c.execute("SELECT COUNT(*) FROM products")
     if c.fetchone()[0] == 0:
@@ -85,10 +87,10 @@ def init_products():
 
 init_products()
 
-# ================= EVENTS =================
+# ================= READY =================
 @bot.event
 async def on_ready():
-    print(f"Yakuza Shop Online as {bot.user}")
+    print(f"✅ Yakuza Shop Online as {bot.user}")
 
 # ================= WALLET =================
 @bot.command()
@@ -96,6 +98,7 @@ async def balance(ctx, user: str = None):
     user = user or ctx.author.name
     bal = get_balance(user)
     await ctx.send(f"💰 {user} Balance: {bal:,}")
+
 
 @bot.command()
 async def addmoney(ctx, user: str, amount: int):
@@ -108,7 +111,8 @@ async def addmoney(ctx, user: str, amount: int):
     c.execute("UPDATE wallet SET balance=? WHERE user=?", (new, user))
     conn.commit()
 
-    await ctx.send(f"✅ +{amount:,} to {user}")
+    await ctx.send(f"✅ +{amount:,} added to {user}")
+
 
 @bot.command()
 async def removemoney(ctx, user: str, amount: int):
@@ -121,7 +125,8 @@ async def removemoney(ctx, user: str, amount: int):
     c.execute("UPDATE wallet SET balance=? WHERE user=?", (new, user))
     conn.commit()
 
-    await ctx.send(f"❌ -{amount:,} from {user}")
+    await ctx.send(f"❌ -{amount:,} removed from {user}")
+
 
 @bot.command()
 async def resetmoney(ctx, user: str):
@@ -131,7 +136,7 @@ async def resetmoney(ctx, user: str):
     c.execute("UPDATE wallet SET balance=0 WHERE user=?", (user,))
     conn.commit()
 
-    await ctx.send(f"♻️ Reset {user}")
+    await ctx.send(f"♻️ {user} reset done")
 
 # ================= SHOP =================
 @bot.command()
@@ -145,6 +150,7 @@ async def shop(ctx):
 
     await ctx.send(msg)
 
+
 @bot.command()
 async def buy(ctx, item_id, amount: int):
     c.execute("SELECT name, price FROM products WHERE id=?", (item_id,))
@@ -156,12 +162,12 @@ async def buy(ctx, item_id, amount: int):
     total = item[1] * amount
     user = ctx.author.name
 
-    # wallet check
     bal = get_balance(user)
     if bal < total:
         return await ctx.send("❌ Not enough money")
 
     new_bal = bal - total
+
     c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
 
     c.execute("""
@@ -171,17 +177,12 @@ async def buy(ctx, item_id, amount: int):
 
     conn.commit()
 
-    msg = f"""✅ ORDER
-
-👤 {user}
-📦 {item[0]}
-🔢 {amount}
-💰 {total:,}"""
-
-    await ctx.send(msg)
+    await ctx.send(
+        f"✅ {user} bought {amount}x {item[0]}\n💰 {total:,}"
+    )
 
     await send_log(ctx.guild,
-        f"🛒 NEW ORDER\n👤 {user}\n📦 {item[0]}\n💰 {total:,}\n🕒 {datetime.now()}"
+        f"🛒 ORDER\nUser: {user}\nItem: {item[0]}\nTotal: {total:,}\nTime: {datetime.now()}"
     )
 
 # ================= HISTORY =================
@@ -193,7 +194,7 @@ async def history(ctx, user: str):
     if not data:
         return await ctx.send("❌ No history")
 
-    msg = f"📜 History {user}\n\n"
+    msg = f"📜 History of {user}\n\n"
     total = 0
 
     for d in data:
@@ -234,9 +235,9 @@ async def txt(ctx, *, text):
     await ctx.message.delete()
     await ctx.send(f"{text}\n\n━━━━━━━━━━\nSend By {ctx.author.name}")
 
-# ================= HELP =================
-@bot.command()
-async def help(ctx):
+# ================= HELP (FIXED) =================
+@bot.command(name="help")
+async def help_command(ctx):
     msg = """
 📖 YAKUZA SHOP HELP
 
