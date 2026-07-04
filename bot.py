@@ -29,9 +29,75 @@ CREATE TABLE IF NOT EXISTS products (
     name TEXT,
     price INTEGER
 )
+conn.commit()
+""")
+c.execute("""
+CREATE TABLE IF NOT EXISTS wallet (
+    user TEXT PRIMARY KEY,
+    balance INTEGER DEFAULT 0
+)
 """)
 
 conn.commit()
+
+def get_balance(user):
+    c.execute("SELECT balance FROM wallet WHERE user=?", (user,))
+    result = c.fetchone()
+    if result:
+        return result[0]
+    else:
+        c.execute("INSERT INTO wallet (user, balance) VALUES (?, ?)", (user, 0))
+        conn.commit()
+        return 0
+
+# didan balance
+@bot.command()
+async def balance(ctx, user: str = None):
+    user = user or ctx.author.name
+    bal = get_balance(user)
+    await ctx.send(f"💰 {user} Balance: {bal:,}")
+
+# reset money
+@bot.command()
+async def resetmoney(ctx, user: str):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ دسترسی نداری")
+        return
+
+    c.execute("UPDATE wallet SET balance=0 WHERE user=?", (user,))
+    conn.commit()
+
+    await ctx.send(f"♻️ حساب {user} ریست شد")
+    
+@ remove money
+@bot.command()
+async def removemoney(ctx, user: str, amount: int):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ دسترسی نداری")
+        return
+
+    bal = get_balance(user)
+    new_bal = max(0, bal - amount)
+
+    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
+    conn.commit()
+
+    await ctx.send(f"❌ {amount:,} از {user} کم شد")
+    
+# add money
+@bot.command()
+async def addmoney(ctx, user: str, amount: int):
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("❌ دسترسی نداری")
+        return
+
+    bal = get_balance(user)
+    new_bal = bal + amount
+
+    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
+    conn.commit()
+
+    await ctx.send(f"✅ {amount:,} به {user} اضافه شد")
 
 # 🛒 اگر خالی بود، محصولات پیشفرض
 def init_products():
