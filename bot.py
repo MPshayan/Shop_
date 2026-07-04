@@ -2,17 +2,18 @@ import discord
 from discord.ext import commands
 import os
 import sqlite3
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🧠 دیتابیس
+# ================= DATABASE =================
 conn = sqlite3.connect("shop.db")
 c = conn.cursor()
 
-# ساخت جدول‌ها
 c.execute("""
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -29,8 +30,8 @@ CREATE TABLE IF NOT EXISTS products (
     name TEXT,
     price INTEGER
 )
-
 """)
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS wallet (
     user TEXT PRIMARY KEY,
@@ -40,66 +41,30 @@ CREATE TABLE IF NOT EXISTS wallet (
 
 conn.commit()
 
+LOG_CHANNEL_ID = 1522694424180555899
+
+# ================= HELPERS =================
 def get_balance(user):
     c.execute("SELECT balance FROM wallet WHERE user=?", (user,))
-    result = c.fetchone()
-    if result:
-        return result[0]
-    else:
-        c.execute("INSERT INTO wallet (user, balance) VALUES (?, ?)", (user, 0))
-        conn.commit()
-        return 0
-
-# didan balance
-@bot.command()
-async def balance(ctx, user: str = None):
-    user = user or ctx.author.name
-    bal = get_balance(user)
-    await ctx.send(f"💰 {user} Balance: {bal:,}")
-
-# reset money
-@bot.command()
-async def resetmoney(ctx, user: str):
-    if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ دسترسی نداری")
-        return
-
-    c.execute("UPDATE wallet SET balance=0 WHERE user=?", (user,))
+    r = c.fetchone()
+    if r:
+        return r[0]
+    c.execute("INSERT INTO wallet (user, balance) VALUES (?, ?)", (user, 0))
     conn.commit()
+    return 0
 
-    await ctx.send(f"♻️ حساب {user} ریست شد")
-    
-# remove money
-@bot.command()
-async def removemoney(ctx, user: str, amount: int):
-    if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ دسترسی نداری")
-        return
+def log_channel():
+    cid = os.getenv("LOG_CHANNEL_ID")
+    return int(cid) if cid else None
 
-    bal = get_balance(user)
-    new_bal = max(0, bal - amount)
+async def send_log(guild, text):
+    cid = log_channel()
+    if cid:
+        ch = guild.get_channel(cid)
+        if ch:
+            await ch.send(text)
 
-    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
-    conn.commit()
-
-    await ctx.send(f"❌ {amount:,} از {user} کم شد")
-    
-# add money
-@bot.command()
-async def addmoney(ctx, user: str, amount: int):
-    if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ دسترسی نداری")
-        return
-
-    bal = get_balance(user)
-    new_bal = bal + amount
-
-    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
-    conn.commit()
-
-    await ctx.send(f"✅ {amount:,} به {user} اضافه شد")
-
-# 🛒 اگر خالی بود، محصولات پیشفرض
+# ================= PRODUCTS INIT =================
 def init_products():
     c.execute("SELECT COUNT(*) FROM products")
     if c.fetchone()[0] == 0:
@@ -120,14 +85,55 @@ def init_products():
 
 init_products()
 
-# -----------------------
+# ================= EVENTS =================
 @bot.event
 async def on_ready():
     print(f"Yakuza Shop Online as {bot.user}")
 
-# -----------------------
-# 🛒 نمایش محصولات
-# -----------------------
+# ================= WALLET =================
+@bot.command()
+async def balance(ctx, user: str = None):
+    user = user or ctx.author.name
+    bal = get_balance(user)
+    await ctx.send(f"💰 {user} Balance: {bal:,}")
+
+@bot.command()
+async def addmoney(ctx, user: str, amount: int):
+    if not ctx.author.guild_permissions.administrator:
+        return await ctx.send("❌ No permission")
+
+    bal = get_balance(user)
+    new = bal + amount
+
+    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new, user))
+    conn.commit()
+
+    await ctx.send(f"✅ +{amount:,} to {user}")
+
+@bot.command()
+async def removemoney(ctx, user: str, amount: int):
+    if not ctx.author.guild_permissions.administrator:
+        return await ctx.send("❌ No permission")
+
+    bal = get_balance(user)
+    new = max(0, bal - amount)
+
+    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new, user))
+    conn.commit()
+
+    await ctx.send(f"❌ -{amount:,} from {user}")
+
+@bot.command()
+async def resetmoney(ctx, user: str):
+    if not ctx.author.guild_permissions.administrator:
+        return await ctx.send("❌ No permission")
+
+    c.execute("UPDATE wallet SET balance=0 WHERE user=?", (user,))
+    conn.commit()
+
+    await ctx.send(f"♻️ Reset {user}")
+
+# ================= SHOP =================
 @bot.command()
 async def shop(ctx):
     c.execute("SELECT * FROM products")
@@ -139,21 +145,24 @@ async def shop(ctx):
 
     await ctx.send(msg)
 
-# -----------------------
-# 🛒 خرید
-# -----------------------
 @bot.command()
 async def buy(ctx, item_id, amount: int):
-
     c.execute("SELECT name, price FROM products WHERE id=?", (item_id,))
     item = c.fetchone()
 
     if not item:
-        await ctx.send("❌ آیتم وجود ندارد")
-        return
+        return await ctx.send("❌ Item not found")
 
     total = item[1] * amount
     user = ctx.author.name
+
+    # wallet check
+    bal = get_balance(user)
+    if bal < total:
+        return await ctx.send("❌ Not enough money")
+
+    new_bal = bal - total
+    c.execute("UPDATE wallet SET balance=? WHERE user=?", (new_bal, user))
 
     c.execute("""
     INSERT INTO orders (user, item, amount, total)
@@ -162,55 +171,97 @@ async def buy(ctx, item_id, amount: int):
 
     conn.commit()
 
-    await ctx.send(
-        f"✅ {user} خرید کرد:\n"
-        f"{amount}x {item[0]}\n"
-        f"💰 {total:,}"
+    msg = f"""✅ ORDER
+
+👤 {user}
+📦 {item[0]}
+🔢 {amount}
+💰 {total:,}"""
+
+    await ctx.send(msg)
+
+    await send_log(ctx.guild,
+        f"🛒 NEW ORDER\n👤 {user}\n📦 {item[0]}\n💰 {total:,}\n🕒 {datetime.now()}"
     )
 
-# -----------------------
-# 📜 تاریخچه
-# -----------------------
+# ================= HISTORY =================
 @bot.command()
 async def history(ctx, user: str):
-
     c.execute("SELECT item, amount, total FROM orders WHERE user=?", (user,))
     data = c.fetchall()
 
     if not data:
-        await ctx.send("❌ هیچ خریدی پیدا نشد")
-        return
+        return await ctx.send("❌ No history")
 
-    msg = f"📜 History of {user}:\n\n"
-    total_all = 0
+    msg = f"📜 History {user}\n\n"
+    total = 0
 
     for d in data:
-        msg += f"🛒 {d[1]}x {d[0]} = {d[2]:,}\n"
-        total_all += d[2]
+        msg += f"{d[1]}x {d[0]} = {d[2]:,}\n"
+        total += d[2]
 
-    msg += f"\n💰 Total: {total_all:,}"
+    msg += f"\n💰 Total: {total:,}"
 
     await ctx.send(msg)
 
-# -----------------------
-# 📊 گزارش ادمین
-# -----------------------
+# ================= REPORT =================
 @bot.command()
 async def report(ctx):
-
     if not ctx.author.guild_permissions.administrator:
-        await ctx.send("❌ دسترسی نداری")
-        return
+        return await ctx.send("❌ No permission")
 
     c.execute("SELECT user, SUM(total) FROM orders GROUP BY user")
     data = c.fetchall()
 
-    msg = "📊 SHOP REPORT:\n\n"
-
+    msg = "📊 REPORT\n\n"
     for d in data:
-        msg += f"👤 {d[0]} → {d[1]:,}\n"
+        msg += f"{d[0]} → {d[1]:,}\n"
 
     await ctx.send(msg)
 
-# -----------------------
+# ================= NICK =================
+@bot.command()
+async def nick(ctx, member: discord.Member, *, name):
+    if not ctx.author.guild_permissions.administrator:
+        return await ctx.send("❌ No permission")
+
+    await member.edit(nick=name)
+    await ctx.send(f"✏️ Nick changed to {name}")
+
+# ================= TXT =================
+@bot.command()
+async def txt(ctx, *, text):
+    await ctx.message.delete()
+    await ctx.send(f"{text}\n\n━━━━━━━━━━\nSend By {ctx.author.name}")
+
+# ================= HELP =================
+@bot.command()
+async def help(ctx):
+    msg = """
+📖 YAKUZA SHOP HELP
+
+🛒 SHOP
+!shop
+!buy <id> <amount>
+
+💰 WALLET
+!balance
+!addmoney
+!removemoney
+!resetmoney
+
+📜 INFO
+!history
+!report
+
+👑 ADMIN
+!nick @user name
+!txt message
+
+━━━━━━━━━━
+Yakuza Shop System
+"""
+    await ctx.send(msg)
+
+# ================= RUN =================
 bot.run(os.getenv("TOKEN"))
